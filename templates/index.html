@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محلل المكالمات (MVP)</title>
+    <!-- 1. إضافة Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 2. إضافة Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+
+<body class="bg-gray-100">
+
+    <div id="app" class="max-w-2xl mx-auto p-6 bg-white shadow-md rounded-lg mt-10 mb-10">
+
+        <!-- العنوان واللوجو (اختياري) -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">محلل المكالمات الذكي</h1>
+            <p class="text-gray-500 mt-2">ارفع ملف المكالمة (MP3, WAV) واحصل على تقييم فوري.</p>
+        </div>
+
+        <!-- فورم الرفع -->
+        <div class="space-y-4">
+            <!-- خانة اختيار الملف -->
+            <div>
+                <label for="audioFile" class="block text-sm font-medium text-gray-700 mb-1">اختر ملف المكالمة:</label>
+                <input type="file" id="audioFile" ref="audioFile" @change="clearResults" accept="audio/*"
+                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+            </div>
+
+            <!-- زر التحليل -->
+            <button @click="analyzeCall" :disabled="loading"
+                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-opacity"
+                :class="{ 'opacity-50 cursor-not-allowed': loading }">
+                <!-- أيقونة التحميل (تظهر فقط وقت التحميل) -->
+                <svg v-if="loading" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                    </path>
+                </svg>
+
+                <!-- نص الزرار -->
+                <span v-if="loading">جاري التحليل...</span>
+                <span v-else>ابدأ التحليل</span>
+            </button>
+        </div>
+
+        <!-- منطقة النتائج -->
+        <div class="mt-8">
+            <!-- في حالة وجود خطأ -->
+            <div v-if="error" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
+                <strong class="font-bold">حدث خطأ:</strong>
+                <span class="block sm:inline">{{ error }}</span>
+            </div>
+
+            <!-- *** التعديل الجوهري هنا: عرض التقرير بشكل منظم *** -->
+            <div v-if="result" class="space-y-6">
+                <h3 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">نتيجة التحليل:</h3>
+
+                <!-- الملخص العام والنتيجة النهائية -->
+                <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                    <div class="flex justify-between items-center">
+                        <h4 class="text-lg font-bold text-blue-800">التقييم الإجمالي</h4>
+                        <span class="text-2xl font-bold bg-blue-600 text-white px-4 py-1 rounded-full">{{
+                            result.total_score }} / 10</span>
+                    </div>
+                    <p class="mt-3 text-gray-700 leading-relaxed">{{ result.overall_summary }}</p>
+                </div>
+
+                <!-- تفاصيل التقييم (باستخدام v-for) -->
+                <div class="space-y-4">
+                    <div v-for="item in result.evaluation" :key="item.rule"
+                        class="border border-gray-200 p-4 rounded-lg hover:bg-gray-50 transition">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="font-semibold text-gray-800">{{ item.rule }}</p>
+                            <span class="font-mono text-sm bg-gray-200 text-gray-800 px-3 py-1 rounded-full">{{
+                                item.score }}</span>
+                        </div>
+                        <p class="text-gray-600">{{ item.comment }}</p>
+                    </div>
+                </div>
+            </div>
+            <!-- *** نهاية التعديل *** -->
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    loading: false,
+                    error: null,
+                    result: null, // الآن سيحتوي على Object وليس String
+                }
+            },
+            methods: {
+                clearResults() {
+                    this.result = null;
+                    this.error = null;
+                },
+                async analyzeCall() {
+                    const file = this.$refs.audioFile.files[0];
+
+                    if (!file) {
+                        this.error = "الرجاء اختيار ملف أولاً.";
+                        this.result = null;
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.error = null;
+                    this.result = null;
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    try {
+                        // استخدام نفس الدومين للـ API (relative path)
+                        const response = await fetch('/analyze_call', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (response.ok) {
+                            // التعديل هنا: نحفظ الـ JSON كـ Object مباشرة
+                            const data = await response.json();
+                            this.result = data;
+                        } else {
+                            const errorData = await response.json();
+                            this.error = errorData.error || 'حدث خطأ غير معروف من السيرفر.';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.error = 'لا يمكن الاتصال بسيرفر التحليل. تأكد أنه يعمل.';
+                    } finally {
+                        this.loading = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+
+</body>
+
+</html>
