@@ -1,3 +1,31 @@
+# Python / virtual env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Environment and secrets
+.env
+
+# Logs and backups
+*.log
+rules_backup_*.txt
+
+# Build / deploy artifacts
+*.egg-info/
+dist/
+build/
+
+# Local datasets or temp
+tmp/
+*.tmp
+
 # Python
 __pycache__/
 *.py[cod]
