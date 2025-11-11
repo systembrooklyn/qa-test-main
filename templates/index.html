@@ -13,8 +13,21 @@
 </head>
 
 <body class="bg-gray-100">
-    {% raw %}
     <div id="app" class="max-w-2xl mx-auto p-6 bg-white shadow-md rounded-lg mt-10 mb-10">
+
+        <!-- Navigation Bar -->
+        <div class="mb-6 pb-4 border-b border-gray-200">
+            <div class="flex justify-center gap-4">
+                <a href="/"
+                    class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium">
+                    🎙️ تحليل المكالمات
+                </a>
+                <a href="/rules"
+                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors font-medium">
+                    ⚙️ إدارة القواعد
+                </a>
+            </div>
+        </div>
 
         <!-- العنوان واللوجو (اختياري) -->
         <div class="text-center mb-6">
@@ -62,18 +75,18 @@
             <div v-if="result" class="space-y-6">
                 <h3 class="text-xl font-semibold text-gray-800 mb-3 border-b pb-2">نتيجة التحليل:</h3>
 
-                <!-- الملخص العام والنتيجة النهائية -->
+                <!-- التقييم الإجمالي -->
                 <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
                     <div class="flex justify-between items-center">
                         <h4 class="text-lg font-bold text-blue-800">التقييم الإجمالي</h4>
                         <span class="text-2xl font-bold bg-blue-600 text-white px-4 py-1 rounded-full">{{
                             result.total_score }} / 10</span>
                     </div>
-                    <p class="mt-3 text-gray-700 leading-relaxed">{{ result.overall_summary }}</p>
                 </div>
 
                 <!-- تفاصيل التقييم (باستخدام v-for) -->
                 <div class="space-y-4">
+                    <h4 class="text-lg font-semibold text-gray-800 mb-2">تفاصيل التقييم:</h4>
                     <div v-for="item in result.evaluation" :key="item.rule"
                         class="border border-gray-200 p-4 rounded-lg hover:bg-gray-50 transition">
                         <div class="flex justify-between items-center mb-2">
@@ -83,6 +96,18 @@
                         </div>
                         <p class="text-gray-600">{{ item.comment }}</p>
                     </div>
+                </div>
+
+                <!-- نقاط القوة -->
+                <div v-if="result.positive_points" class="bg-green-50 border border-green-200 p-4 rounded-lg">
+                    <h4 class="text-lg font-bold text-green-800 mb-2">نقاط القوة:</h4>
+                    <p class="text-gray-700 leading-relaxed">{{ result.positive_points }}</p>
+                </div>
+
+                <!-- نقاط التحسين -->
+                <div v-if="result.areas_for_improvement" class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                    <h4 class="text-lg font-bold text-yellow-800 mb-2">نقاط للتحسين:</h4>
+                    <p class="text-gray-700 leading-relaxed">{{ result.areas_for_improvement }}</p>
                 </div>
             </div>
             <!-- *** نهاية التعديل *** -->
@@ -102,6 +127,67 @@
                 }
             },
             methods: {
+                convertSectionsToEvaluation(sectionsScores) {
+                    // تحويل sections_scores إلى evaluation array
+                    const evaluation = [];
+
+                    // أسماء القواعد بالعربية حسب الترتيب
+                    const ruleNames = {
+                        'greeting_and_welcome': 'التحية والترحيب',
+                        'self_introduction_and_purpose': 'التعريف والغرض',
+                        'scholarship_name_and_benefit': 'ذكر اسم المنحة والفائدة',
+                        'permission_for_time': 'طلب الإذن بالوقت',
+                        'registration_letter_explanation': 'شرح خطاب التسجيل',
+                        'clarification_of_next_steps': 'توضيح الخطوات',
+                        'deadline_and_urgency': 'تحديد المواعيد والمهلة',
+                        'active_listening_and_identification': 'الاستماع الفعال',
+                        'correct_and_accurate_script_adherence': 'الإجابة الصحيحة',
+                        'handling_missing_registration_letter': 'التصرف في عدم وصول الخطاب',
+                        'managing_repeated_or_complex_inquiries': 'إدارة الاستفسارات المعقدة',
+                        'tone_and_language_clarity': 'نبرة الصوت والوضوح',
+                        'professionalism_and_conduct': 'المهنية والتعامل',
+                        'call_closing': 'إغلاق المكالمة'
+                    };
+
+                    // أسماء الأقسام المحتملة (لو جاء تعليق/درجة على مستوى القسم مباشرة)
+                    const sectionNames = {
+                        'opening_and_greeting': 'الافتتاحية والتحية',
+                        'core_information_delivery': 'تسليم المعلومات الأساسية',
+                        'inquiries_and_objections_handling': 'إدارة الاستفسارات والاعتراضات',
+                        'professional_performance_and_quality': 'الاحترافية وجودة الأداء',
+                        'call_closing': 'إغلاق المكالمة'
+                    };
+
+                    // المرور على كل قسم
+                    for (const sectionKey in (sectionsScores || {})) {
+                        const section = sectionsScores[sectionKey];
+
+                        if (!section) continue;
+
+                        // حالة: القسم نفسه يحتوي score/comment مباشرة (بدون details)
+                        if (typeof section === 'object' && (('score' in section) || ('comment' in section))) {
+                            evaluation.push({
+                                rule: sectionNames[sectionKey] || sectionKey,
+                                score: section.score ?? 0,
+                                comment: section.comment || ''
+                            });
+                        }
+
+                        // حالة: وجود تفاصيل داخل details
+                        if (section.details && typeof section.details === 'object') {
+                            for (const ruleKey in section.details) {
+                                const detail = section.details[ruleKey] || {};
+                                evaluation.push({
+                                    rule: ruleNames[ruleKey] || sectionNames[sectionKey] || ruleKey,
+                                    score: detail.score ?? 0,
+                                    comment: detail.comments || detail.comment || ''
+                                });
+                            }
+                        }
+                    }
+
+                    return evaluation;
+                },
                 clearResults() {
                     this.result = null;
                     this.error = null;
@@ -132,6 +218,30 @@
                         if (response.ok) {
                             // التعديل هنا: نحفظ الـ JSON كـ Object مباشرة
                             const data = await response.json();
+                            console.log('Received data:', data); // للتأكد من البيانات
+
+                            // تحويل sections_scores إلى evaluation إذا لم تكن موجودة
+                            if ((!data.evaluation || !Array.isArray(data.evaluation) || data.evaluation.length === 0)
+                                && data.sections_scores) {
+                                console.log('Converting sections_scores to evaluation array...');
+                                data.evaluation = this.convertSectionsToEvaluation(data.sections_scores);
+                            }
+
+                            // التحقق من وجود evaluation
+                            if (!data.evaluation || !Array.isArray(data.evaluation)) {
+                                console.warn('No evaluation array found in response');
+                                data.evaluation = []; // نضع مصفوفة فارغة لتجنب الأخطاء
+                            }
+
+                            // إضافة positive_points و areas_for_improvement من الحقول البديلة
+                            // بعض النماذج تُرجع overall_feedback بدلاً من overall_comments
+                            if (!data.positive_points) {
+                                data.positive_points = data.overall_feedback || data.overall_comments || '';
+                            }
+                            if (!data.areas_for_improvement && data.recommendations) {
+                                data.areas_for_improvement = data.recommendations;
+                            }
+
                             this.result = data;
                         } else {
                             const errorData = await response.json();
@@ -147,7 +257,6 @@
             }
         }).mount('#app');
     </script>
-    {% endraw %}
 </body>
 
 </html>

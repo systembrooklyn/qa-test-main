@@ -1,9 +1,11 @@
 import google.generativeai as genai
 import os
+import json
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 import mimetypes 
+from datetime import datetime
 
 load_dotenv()
 
@@ -13,87 +15,120 @@ if not api_key:
 
 genai.configure(api_key=api_key)
 
-# --- تم تعديل نظام التقييم ليصبح من 10 درجات ---
-RULES_PROMPT = """
-أنت مدير جودة خبير ومحلل مكالمات في "بروكلين بيزنس سكول" لمنحة MBA.
-مهمتك هي تقييم أداء الموظف في المكالمة التالية بدقة شديدة بناءً على المعايير المفصلة أدناه. يجب أن تكون صارماً في تطبيق القواعد.
+# دالة لقراءة القواعد من الملف
+def load_rules():
+    """تحميل القواعد من ملف rules.txt"""
+    try:
+        with open('rules.txt', 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        # إذا لم يوجد الملف، نرجع القواعد الافتراضية
+        return """أنت مدير جودة خبير ومحلل مكالمات في "بروكلين بيزنس سكول" لمنحة MBA.
+مهمتك هي تقييم أداء الموظف في المكالمة التالية بدقة شديدة بناءً على المعايير المفصلة أدناه. يجب أن تكون صارماً في تطبيق القواعد."""
+    except Exception as e:
+        print(f"Error loading rules: {e}")
+        return ""
 
-**قواعد التقييم المفصلة (الإجمالي من 10 درجات):**
-
-**1. بروتوكول الافتتاحية (2 درجة):**
-   - **(0.5) التعريف بالمنحة:** هل ذكر الموظف اسم "منحة MBA" في بداية المكالمة؟
-   - **(0.5) سؤال عن الاسم:** هل سأل الموظف عن اسم الطالب الثلاثي بوضوح؟
-   - **(0.5) الترحيب بالاسم:** هل رحب الموظف بالطالب بعد معرفة اسمه؟
-   - **(0.5) استئذان للوقت (للمكالمات الصادرة):** هل استأذن الموظف بدقيقتين من وقت الطالب؟
-
-**2. الاحترافية واللغة (3 درجات):**
-   - **(1) تجنب العامية والممنوعات:** هل تجنب الموظف تماماً كلمات مثل (ايه، اه، لأ، مش عارف/ة) والمصطلحات الدينية؟
-   - **(1) عدم مقاطعة الطالب:** هل أعطى الموظف فرصة كاملة للطالب للحديث دون مقاطعة؟
-   - **(0.5) وتيرة الكلام:** هل كانت سرعة كلام الموظف مناسبة؟
-   - **(0.5) آداب الانتظار:** عند وضع الطالب في الانتظار، هل شكره الموظف على انتظاره عند العودة؟
-
-**3. الالتزام بالاسكريبت وجودة المعلومات (3 درجات):**
-   - **(1) شرح الاعتماد:** هل أوضح الموظف أهمية "اعتماد الشهادة"؟
-   - **(0.5) شرح تكلفة المنحة:** هل استخدم الموظف صيغة "المنحة قبل وبعد الدعم" وتجنب كلمة "تكلفة"؟
-   - **(0.5) استخدام اسم الطالب:** هل كرر الموظف اسم الطالب 3 مرات على الأقل؟
-   - **(0.5) معلومات الاختبار:** هل اكتفى الموظف بذكر المعلومات الأساسية للاختبار دون الخوض في تفاصيل خاطئة؟
-   - **(0.5) عرض تقديم استفسار:** هل عرض الموظف تقديم استفسار للإدارة؟
-
-**4. بروتوكول الإنهاء (2 درجة):**
-   - **(1) السؤال عن استفسارات أخرى:** هل سأل الموظف "هل لدى حضرتك أي استفسار آخر؟"
-   - **(1) جملة الختام الرسمية:** هل أنهى الموظف المكالمة بجملة "شكراً لاتصالك ببروكلين بيزنس سكول"؟
-
-**المطلوب:**
-بعد تحليل المكالمة، قم بإرجاع تقييمك **فقط** بصيغة JSON التالية. **يجب أن يكون `total_score` هو مجموع الدرجات من 10.**
-
-{
-  "total_score": 0,
-  "evaluation": [
-    {
-      "rule": "التعريف بالمنحة",
-      "score": 0,
-      "comment": "تعليقك ولماذا أخذ هذه الدرجة"
-    },
-    {
-      "rule": "سؤال عن الاسم",
-      "score": 0,
-      "comment": "تعليقك"
-    },
-    {
-      "rule": "الترحيب بالاسم",
-      "score": 0,
-      "comment": "تعليقك"
-    },
-    {
-      "rule": "استئذان للوقت (للمكالمات الصادرة)",
-      "score": 0,
-      "comment": "تعليقك"
-    },
-    {
-      "rule": "تجنب العامية والممنوعات",
-      "score": 0,
-      "comment": "تعليقك"
-    },
-    {
-      "rule": "عدم مقاطعة الطالب",
-      "score": 0,
-      "comment": "تعليقك"
-    }
-  ],
-  "positive_points": "اذكر هنا أهم نقاط القوة في أداء الموظف.",
-  "areas_for_improvement": "اذكر هنا أهم النقاط التي تحتاج إلى تحسين."
-}
-"""
+# تحميل القواعد عند بدء التشغيل
+RULES_PROMPT = load_rules()
 
 model = genai.GenerativeModel(model_name="gemini-2.5-flash-preview-05-20")
 
 app = Flask(__name__)
 CORS(app)
 
+# تغيير Jinja2 delimiters لتجنب تعارض مع Vue.js
+app.jinja_env.variable_start_string = '[['
+app.jinja_env.variable_end_string = ']]'
+app.jinja_env.block_start_string = '[%'
+app.jinja_env.block_end_string = '%]'
+
 @app.route('/')
 def home():
     """صفحة الواجهة الرئيسية"""
     return render_template('index.html')
+
+@app.route('/rules')
+def rules_page():
+    """صفحة إدارة القواعد"""
+    return render_template('rules.html')
+
+@app.route('/current_rules', methods=['GET'])
+def get_current_rules():
+    """الحصول على القواعد الحالية"""
+    try:
+        rules = load_rules()
+        return jsonify({"rules": rules}), 200
+    except Exception as e:
+        return jsonify({"error": f"Error loading rules: {e}"}), 500
+
+@app.route('/enhance_rules', methods=['POST'])
+def enhance_rules():
+    """تحسين القواعد باستخدام AI"""
+    try:
+        data = request.get_json()
+        raw_rules = data.get('rules', '')
+        
+        if not raw_rules:
+            return jsonify({"error": "No rules provided"}), 400
+        
+        # برومبت لتحسين القواعد
+        enhance_prompt = """أنت خبير في كتابة قواعد تقييم المكالمات. المطلوب منك تحسين وتنسيق النص التالي ليصبح في نفس الصيغة القياسية لقواعد التقييم.
+
+المتطلبات:
+1. يجب أن يكون التقييم من 10 درجات إجمالي
+2. يجب تقسيم القواعد إلى أقسام واضحة مع درجات لكل قسم
+3. يجب أن يكون هناك قسم "المطلوب" يوضح صيغة JSON المطلوبة للإرجاع
+4. يجب أن يكون النص واضحاً ومفصلاً باللغة العربية
+5. احافظ على نفس الأسلوب الاحترافي والصرامة في التطبيق
+
+النص المراد تحسينه:
+"""
+        
+        response = model.generate_content([enhance_prompt + raw_rules])
+        enhanced_rules = response.text.strip()
+        
+        return jsonify({"enhanced_rules": enhanced_rules}), 200
+        
+    except Exception as e:
+        print(f"Error enhancing rules: {e}")
+        return jsonify({"error": f"Error enhancing rules: {e}"}), 500
+
+@app.route('/save_rules', methods=['POST'])
+def save_rules():
+    """حفظ القواعد الجديدة"""
+    try:
+        data = request.get_json()
+        new_rules = data.get('rules', '')
+        
+        if not new_rules:
+            return jsonify({"error": "No rules provided"}), 400
+        
+        # عمل نسخة احتياطية قبل الحفظ
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_filename = f"rules_backup_{timestamp}.txt"
+            if os.path.exists('rules.txt'):
+                with open('rules.txt', 'r', encoding='utf-8') as f:
+                    backup_content = f.read()
+                with open(backup_filename, 'w', encoding='utf-8') as f:
+                    f.write(backup_content)
+        except Exception as e:
+            print(f"Warning: Could not create backup: {e}")
+        
+        # حفظ القواعد الجديدة
+        with open('rules.txt', 'w', encoding='utf-8') as f:
+            f.write(new_rules)
+        
+        # تحديث المتغير في الذاكرة
+        global RULES_PROMPT
+        RULES_PROMPT = new_rules
+        
+        return jsonify({"message": "Rules saved successfully"}), 200
+        
+    except Exception as e:
+        print(f"Error saving rules: {e}")
+        return jsonify({"error": f"Error saving rules: {e}"}), 500
 
 @app.route('/analyze_call', methods=['POST'])
 def analyze_call_handler():
@@ -121,7 +156,14 @@ def analyze_call_handler():
         
         json_response = response.text.strip().replace("```json", "").replace("```", "").strip()
         
-        return json_response, 200
+        # تحويل النص إلى كائن JSON وإرجاعه بصيغة صحيحة
+        try:
+            data = json.loads(json_response)
+            return jsonify(data), 200
+        except json.JSONDecodeError as je:
+            print(f"JSON Parse Error: {je}")
+            print(f"Response text: {json_response}")
+            return jsonify({"error": "Failed to parse AI response as JSON", "raw_response": json_response}), 500
 
     except Exception as e:
         print(f"!!!!!!!! AN ERROR OCCURRED !!!!!!!!\n{e}\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")

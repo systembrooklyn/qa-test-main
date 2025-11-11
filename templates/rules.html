@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة قواعد التقييم</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+
+<body class="bg-gray-100">
+    <div id="app" class="max-w-4xl mx-auto p-6 bg-white shadow-md rounded-lg mt-10 mb-10">
+        
+        <!-- Navigation Bar -->
+        <div class="mb-6 pb-4 border-b border-gray-200">
+            <div class="flex justify-center gap-4">
+                <a href="/" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors font-medium">
+                    🎙️ تحليل المكالمات
+                </a>
+                <a href="/rules" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium">
+                    ⚙️ إدارة القواعد
+                </a>
+            </div>
+        </div>
+
+        <!-- العنوان -->
+        <div class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-gray-800">إدارة قواعد التقييم</h1>
+            <p class="text-gray-500 mt-2">قم بتحرير قواعد التقييم وتحسينها باستخدام الذكاء الاصطناعي</p>
+        </div>
+
+        <!-- رسائل النجاح/الخطأ -->
+        <div v-if="successMessage" class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg" role="alert">
+            {{ successMessage }}
+        </div>
+
+        <div v-if="error" class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
+            <strong class="font-bold">حدث خطأ:</strong>
+            <span class="block sm:inline">{{ error }}</span>
+        </div>
+
+        <!-- textarea للقواعد -->
+        <div class="mb-4">
+            <label for="rulesText" class="block text-sm font-medium text-gray-700 mb-2">قواعد التقييم:</label>
+            <textarea 
+                id="rulesText"
+                v-model="rulesText" 
+                rows="20"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                placeholder="اكتب قواعد التقييم هنا..."></textarea>
+        </div>
+
+        <!-- الأزرار -->
+        <div class="flex gap-4 mb-4">
+            <!-- زر Enhance -->
+            <button 
+                @click="enhanceRules" 
+                :disabled="loading || enhancing"
+                class="flex-1 flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg v-if="enhancing" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span v-if="enhancing">جاري التحسين...</span>
+                <span v-else>✨ Enhance</span>
+            </button>
+
+            <!-- زر Save -->
+            <button 
+                @click="saveRules" 
+                :disabled="loading || saving"
+                class="flex-1 flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg v-if="saving" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span v-if="saving">جاري الحفظ...</span>
+                <span v-else>💾 حفظ</span>
+            </button>
+        </div>
+
+        <!-- الأزرار بعد الحفظ -->
+        <div v-if="saved" class="flex gap-4 mt-4">
+            <button 
+                @click="goToHome" 
+                class="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                🏠 الذهاب لصفحة التحليل
+            </button>
+            <button 
+                @click="editAgain" 
+                class="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                ✏️ تعديل القواعد مرة أخرى
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    rulesText: '',
+                    loading: false,
+                    enhancing: false,
+                    saving: false,
+                    error: null,
+                    successMessage: null,
+                    saved: false
+                }
+            },
+            mounted() {
+                // تحميل آخر نص محفوظ من localStorage أولاً
+                const savedText = localStorage.getItem('rules_draft');
+                if (savedText) {
+                    this.rulesText = savedText;
+                }
+                // ثم تحميل القواعد من السيرفر
+                this.loadCurrentRules();
+            },
+            watch: {
+                // حفظ النص تلقائياً في localStorage عند كل تغيير
+                rulesText(newValue) {
+                    localStorage.setItem('rules_draft', newValue);
+                }
+            },
+            methods: {
+                async loadCurrentRules() {
+                    this.loading = true;
+                    this.error = null;
+                    try {
+                        const response = await fetch('/current_rules');
+                        if (response.ok) {
+                            const data = await response.json();
+                            const serverRules = data.rules || '';
+                            // إذا كان هناك نص محفوظ محلياً، نستخدمه بدلاً من السيرفر
+                            // إلا إذا كان النص المحفوظ فارغاً
+                            if (!this.rulesText || this.rulesText.trim() === '') {
+                                this.rulesText = serverRules;
+                            }
+                        } else {
+                            const errorData = await response.json();
+                            this.error = errorData.error || 'حدث خطأ في تحميل القواعد';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.error = 'لا يمكن الاتصال بالسيرفر';
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                async enhanceRules() {
+                    if (!this.rulesText.trim()) {
+                        this.error = 'الرجاء إدخال القواعد أولاً';
+                        return;
+                    }
+
+                    this.enhancing = true;
+                    this.error = null;
+                    this.successMessage = null;
+
+                    try {
+                        const response = await fetch('/enhance_rules', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ rules: this.rulesText })
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.rulesText = data.enhanced_rules || this.rulesText;
+                            this.successMessage = 'تم تحسين القواعد بنجاح! راجعها ثم احفظها.';
+                            this.saved = false;
+                        } else {
+                            const errorData = await response.json();
+                            this.error = errorData.error || 'حدث خطأ في تحسين القواعد';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.error = 'لا يمكن الاتصال بالسيرفر';
+                    } finally {
+                        this.enhancing = false;
+                    }
+                },
+                async saveRules() {
+                    if (!this.rulesText.trim()) {
+                        this.error = 'الرجاء إدخال القواعد أولاً';
+                        return;
+                    }
+
+                    this.saving = true;
+                    this.error = null;
+                    this.successMessage = null;
+
+                    try {
+                        const response = await fetch('/save_rules', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ rules: this.rulesText })
+                        });
+
+                        if (response.ok) {
+                            this.successMessage = 'تم حفظ القواعد بنجاح! يمكنك الآن استخدامها في تحليل المكالمات.';
+                            this.saved = true;
+                            // مسح الـ draft من localStorage بعد الحفظ الناجح
+                            localStorage.removeItem('rules_draft');
+                        } else {
+                            const errorData = await response.json();
+                            this.error = errorData.error || 'حدث خطأ في حفظ القواعد';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.error = 'لا يمكن الاتصال بالسيرفر';
+                    } finally {
+                        this.saving = false;
+                    }
+                },
+                goToHome() {
+                    window.location.href = '/';
+                },
+                editAgain() {
+                    this.saved = false;
+                    this.successMessage = null;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
+
