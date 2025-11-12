@@ -80,7 +80,7 @@
                     <div class="flex justify-between items-center">
                         <h4 class="text-lg font-bold text-blue-800">التقييم الإجمالي</h4>
                         <span class="text-2xl font-bold bg-blue-600 text-white px-4 py-1 rounded-full">{{
-                            result.total_score }} / 10</span>
+                            formatScore(result.total_score) }} / 10</span>
                     </div>
                 </div>
 
@@ -158,10 +158,12 @@
                         'call_closing': 'إغلاق المكالمة'
                     };
 
-                    // المرور على كل قسم
-                    for (const sectionKey in (sectionsScores || {})) {
-                        const section = sectionsScores[sectionKey];
+                    // المرور على الأقسام بترتيب sectionNames أولاً ثم أي أقسام إضافية
+                    const orderedSectionKeys = Object.keys(sectionNames);
+                    const remainingSectionKeys = Object.keys(sectionsScores || {}).filter(k => !orderedSectionKeys.includes(k));
 
+                    for (const sectionKey of [...orderedSectionKeys, ...remainingSectionKeys]) {
+                        const section = sectionsScores[sectionKey];
                         if (!section) continue;
 
                         // حالة: القسم نفسه يحتوي score/comment مباشرة (بدون details)
@@ -173,9 +175,12 @@
                             });
                         }
 
-                        // حالة: وجود تفاصيل داخل details
+                        // حالة: وجود تفاصيل داخل details — رتّب التفاصيل وفق ترتيب ruleNames
                         if (section.details && typeof section.details === 'object') {
-                            for (const ruleKey in section.details) {
+                            const orderedDetailKeys = Object.keys(ruleNames).filter(k => Object.prototype.hasOwnProperty.call(section.details, k));
+                            const remainingDetailKeys = Object.keys(section.details).filter(k => !orderedDetailKeys.includes(k));
+
+                            for (const ruleKey of [...orderedDetailKeys, ...remainingDetailKeys]) {
                                 const detail = section.details[ruleKey] || {};
                                 evaluation.push({
                                     rule: ruleNames[ruleKey] || sectionNames[sectionKey] || ruleKey,
@@ -187,6 +192,61 @@
                     }
 
                     return evaluation;
+                },
+                computeNormalizedTotal(data) {
+                    const clamp10 = (v) => Math.max(0, Math.min(10, v));
+                    // 1) محاولة قراءة total_score مباشرة (قد تكون رقم أو نص مثل "10 / 10.25")
+                    if (data && data.total_score != null) {
+                        const raw = data.total_score;
+                        const numeric = Number(raw);
+                        if (!Number.isNaN(numeric)) {
+                            return clamp10(+numeric.toFixed(2));
+                        }
+                        const numbers = String(raw).match(/[\d]+(?:\.\d+)?/g) || [];
+                        if (numbers.length >= 2) {
+                            const a = parseFloat(numbers[0]);
+                            const b = parseFloat(numbers[1]);
+                            if (Number.isFinite(a) && Number.isFinite(b) && b > 0) {
+                                return clamp10(+((a / b) * 10).toFixed(2));
+                            }
+                        }
+                        if (numbers.length >= 1) {
+                            const a = parseFloat(numbers[0]);
+                            if (Number.isFinite(a)) return clamp10(+a.toFixed(2));
+                        }
+                    }
+                    // 2) حساب من sections_scores (باستخدام max_score للتطبيع إلى 10)
+                    if (data && data.sections_scores && typeof data.sections_scores === 'object') {
+                        let sum = 0;
+                        let max = 0;
+                        for (const key in data.sections_scores) {
+                            const s = data.sections_scores[key] || {};
+                            sum += Number(s.score) || 0;
+                            const m = Number(s.max_score);
+                            if (Number.isFinite(m)) max += m;
+                        }
+                        if (max > 0) return clamp10(+((sum / max) * 10).toFixed(2));
+                        return clamp10(+sum.toFixed(2));
+                    }
+                    // 3) حساب من sections[] (إن وُجدت)
+                    if (Array.isArray(data?.sections)) {
+                        let sum = 0;
+                        let max = 0;
+                        for (const sec of data.sections) {
+                            sum += Number(sec?.score) || 0;
+                            const m = Number(sec?.max_score);
+                            if (Number.isFinite(m)) max += m;
+                        }
+                        if (max > 0) return clamp10(+((sum / max) * 10).toFixed(2));
+                        return clamp10(+sum.toFixed(2));
+                    }
+                    return 0;
+                },
+                formatScore(n) {
+                    const num = Number(n);
+                    if (Number.isNaN(num)) return '0';
+                    const fixed = Math.round(num * 100) / 100;
+                    return String(fixed).replace(/\.00$/, '');
                 },
                 clearResults() {
                     this.result = null;
@@ -241,6 +301,30 @@
                             if (!data.areas_for_improvement && data.recommendations) {
                                 data.areas_for_improvement = data.recommendations;
                             }
+
+                            // تنقية "نقاط القوة" من أي جمل تتعلق بحساب الدرجة الإجمالية
+                            const sanitizePositivePoints = (text) => {
+                                if (!text) return text;
+                                const bannedTokens = [
+                                    'الدرجة الإجمالية',
+                                    'جمع درجات الأقسام',
+                                    'تحويلها إلى مقياس',
+                                    'كحد أقصى',
+                                    'من 10 درجات',
+                                    'المحتسبة'
+                                ];
+                                return String(text)
+                                    .split('\n')
+                                    .filter(line => !bannedTokens.some(token => line.includes(token)))
+                                    .join('\n')
+                                    .trim();
+                            };
+                            if (data.positive_points) {
+                                data.positive_points = sanitizePositivePoints(data.positive_points);
+                            }
+
+                            // ضبط الدرجة النهائية لتكون دائماً من 10
+                            data.total_score = this.computeNormalizedTotal(data);
 
                             this.result = data;
                         } else {
